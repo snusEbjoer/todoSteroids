@@ -1,0 +1,69 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    hostname: rabbitmq
+    restart: always
+    healthcheck:
+        test: [ "CMD", "rabbitmqctl", "status"]
+        interval: 5s
+        timeout: 20s
+        retries: 5
+    environment:
+      - RABBITMQ_DEFAULT_USER=user
+      - RABBITMQ_DEFAULT_PASS=pass
+    ports:
+      - 5672:5672
+      - 15672:15672
+
+  postgres:
+    image: postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+      PGUSER: postgres
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: ../build/api-gateway/Dockerfile
+    restart: always
+    environment:
+      REFRESH_SECRET: "42"
+      ACCESS_SECRET: "78"
+    ports:
+      - "42069:42069"
+    command: ./api-gateway
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  user:
+    build:
+      context: ./user
+      dockerfile: ../build/user/Dockerfile
+    restart: always
+    command: ./user
+    environment:
+      POSTGRES_USER: "user"
+      POSTGRES_PASSWORD: "user123"
+      POSTGRES_DB: "userdb"
+      REFRESH_SECRET: "42"
+      ACCESS_SECRET: "78"
+      SALT: 10
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
